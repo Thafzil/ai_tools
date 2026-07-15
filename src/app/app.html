@@ -1,0 +1,40 @@
+<div class="shell-frame" [attr.data-theme]="theme()">
+  <header class="global-header">
+    <a class="brand-link" routerLink="/" aria-label="Workspace Tools home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg lucideBoxes size="21"></svg>
+      </span>
+      <span class="brand-copy">
+        <strong>Workspace Tools</strong>
+        <small>All apps</small>
+      </span>
+    </a>
+
+    <nav class="global-nav" aria-label="Workspace navigation">
+      <a routerLink="/" class="nav-link" aria-label="All apps">
+        <svg lucideHome size="16"></svg>
+        <span class="action-label">All apps</span>
+      </a>
+    </nav>
+
+    <button
+      class="theme-toggle"
+      type="button"
+      [attr.aria-label]="isDark() ? 'Switch to light theme' : 'Switch to dark theme'"
+      [title]="isDark() ? 'Switch to light theme' : 'Switch to dark theme'"
+      (click)="toggleTheme()"
+    >
+      @if (isDark()) {
+        <svg lucideSun size="16"></svg>
+        <span class="action-label">Light</span>
+      } @else {
+        <svg lucideMoon size="16"></svg>
+        <span class="action-label">Dark</span>
+      }
+    </button>
+  </header>
+
+  <main class="shell-content">
+    <router-outlet />
+  </main>
+</div>

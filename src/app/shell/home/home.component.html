@@ -1,0 +1,47 @@
+<main class="home-shell">
+  <section class="dashboard">
+    <div class="dashboard-heading">
+      <div>
+        <span class="eyebrow">All apps</span>
+        <h2>Choose a workspace tool</h2>
+      </div>
+      <p>{{ tools.length }} available</p>
+    </div>
+
+    <div class="tool-grid" aria-label="Available tools">
+      @for (tool of tools; track tool.id) {
+        <article class="tool-card">
+          <div class="card-topline">
+            <span class="tool-icon" aria-hidden="true">
+              <svg lucideBraces size="19"></svg>
+            </span>
+            <span class="status">{{ tool.status }}</span>
+          </div>
+
+          <h3>{{ tool.name }}</h3>
+          <p>{{ tool.description }}</p>
+
+          <div class="tag-row">
+            @for (tag of tool.tags; track tag) {
+              <span>{{ tag }}</span>
+            }
+          </div>
+
+          <div class="card-footer">
+            <span>{{
+              tool.backendMode === 'none' ? 'Ready in browser' : 'Connected workspace'
+            }}</span>
+            <a
+              class="launch-link"
+              [routerLink]="tool.route"
+              [attr.aria-label]="'Open ' + tool.name"
+            >
+              Open
+              <svg lucideArrowRight size="17"></svg>
+            </a>
+          </div>
+        </article>
+      }
+    </div>
+  </section>
+</main>

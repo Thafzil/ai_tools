@@ -1,0 +1,511 @@
+<main class="app-shell" [attr.data-theme]="theme()">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg lucideBraces size="22"></svg>
+      </span>
+      <div>
+        <h1>Markdown AST Studio</h1>
+        <p>
+          {{ status() }} · {{ document().stats.characters | number }} chars ·
+          {{ lineCount() }} lines
+        </p>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <button class="quiet-button" type="button" (click)="loadSample()">
+        <svg lucideSparkles size="16"></svg>
+        Sample
+      </button>
+      <button class="quiet-button" type="button" (click)="copyMarkdown()">
+        <svg lucideCopy size="16"></svg>
+        Markdown
+      </button>
+      <button class="primary-button" type="button" (click)="downloadHtml()">
+        <svg lucideDownload size="16"></svg>
+        Export <span class="optional-label">HTML</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="metric-strip" aria-label="Document metrics">
+    @for (metric of metrics(); track metric.label) {
+      <div class="metric">
+        <span>{{ metric.label }}</span>
+        <strong>{{ metric.value }}</strong>
+      </div>
+    }
+  </section>
+
+  <section class="workspace">
+    <section class="panel editor-panel" aria-labelledby="editor-heading">
+      <div class="panel-header">
+        <div>
+          <h2 id="editor-heading">Editor</h2>
+          <p>Saved {{ savedAt() }}</p>
+        </div>
+        <div class="panel-actions">
+          <button
+            class="icon-button"
+            type="button"
+            title="Paste from clipboard"
+            aria-label="Paste from clipboard"
+            (click)="pasteFromClipboard(editor)"
+          >
+            <svg lucideClipboardPaste size="17"></svg>
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            title="Toggle soft wrap"
+            aria-label="Toggle soft wrap"
+            [class.is-active]="softWrap()"
+            (click)="toggleWrap()"
+          >
+            <svg lucideWrapText size="17"></svg>
+          </button>
+          <button
+            class="icon-button danger"
+            type="button"
+            title="Clear editor"
+            aria-label="Clear editor"
+            (click)="clearEditor()"
+          >
+            <svg lucideTrash2 size="17"></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar" role="toolbar" aria-label="Markdown formatting">
+        <button
+          type="button"
+          title="Undo (Ctrl/Command + Z)"
+          aria-label="Undo"
+          [disabled]="!canUndo()"
+          (click)="undoEditor(editor)"
+        >
+          <svg lucideUndo2 size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Redo (Ctrl/Command + Shift + Z or Ctrl + Y)"
+          aria-label="Redo"
+          [disabled]="!canRedo()"
+          (click)="redoEditor(editor)"
+        >
+          <svg lucideRedo2 size="17"></svg>
+        </button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button
+          type="button"
+          title="Heading (Ctrl/Command + Alt + 1)"
+          aria-label="Heading"
+          (click)="applyFormat('heading', editor)"
+        >
+          <svg lucideHeading1 size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Bold (Ctrl/Command + B)"
+          aria-label="Bold"
+          (click)="applyFormat('bold', editor)"
+        >
+          <svg lucideBold size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Italic (Ctrl/Command + I)"
+          aria-label="Italic"
+          (click)="applyFormat('italic', editor)"
+        >
+          <svg lucideItalic size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Quote (Ctrl/Command + Shift + .)"
+          aria-label="Quote"
+          (click)="applyFormat('quote', editor)"
+        >
+          <svg lucideQuote size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="List (Ctrl/Command + Shift + 8)"
+          aria-label="List"
+          (click)="applyFormat('list', editor)"
+        >
+          <svg lucideList size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Task (Ctrl/Command + Shift + 9)"
+          aria-label="Task"
+          (click)="applyFormat('task', editor)"
+        >
+          <svg lucideListChecks size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Code block (Ctrl/Command + E)"
+          aria-label="Code block"
+          (click)="applyFormat('code', editor)"
+        >
+          <svg lucideCode2 size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Table (Ctrl/Command + Alt + T)"
+          aria-label="Table"
+          (click)="applyFormat('table', editor)"
+        >
+          <svg lucideTable size="17"></svg>
+        </button>
+        <button
+          type="button"
+          title="Link (Ctrl/Command + K)"
+          aria-label="Link"
+          (click)="applyFormat('link', editor)"
+        >
+          <svg lucideLink size="17"></svg>
+        </button>
+      </div>
+
+      <textarea
+        #editor
+        class="markdown-input"
+        [class.no-wrap]="!softWrap()"
+        [ngModel]="markdown()"
+        (ngModelChange)="updateMarkdown($event, editor)"
+        (keydown)="handleEditorKeydown($event, editor)"
+        spellcheck="false"
+        placeholder="# Paste Markdown here"
+        aria-label="Markdown editor"
+      ></textarea>
+    </section>
+
+    <section
+      class="panel output-panel"
+      [class.is-fullscreen]="outputFullscreen()"
+      aria-labelledby="output-heading"
+    >
+      <div class="panel-header">
+        <div>
+          <h2 id="output-heading">Output</h2>
+          <p>{{ document().elementTree.length | number }} rendered elements</p>
+        </div>
+        <div class="output-actions">
+          <button class="quiet-button compact" type="button" (click)="copyHtml()">
+            <svg lucideCopy size="16"></svg>
+            HTML
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            [attr.aria-label]="
+              outputFullscreen() ? 'Exit output fullscreen' : 'Enter output fullscreen'
+            "
+            [title]="outputFullscreen() ? 'Exit fullscreen (Esc)' : 'Fullscreen output'"
+            (click)="toggleOutputFullscreen()"
+          >
+            @if (outputFullscreen()) {
+              <svg lucideMinimize2 size="17"></svg>
+            } @else {
+              <svg lucideMaximize2 size="17"></svg>
+            }
+          </button>
+        </div>
+      </div>
+
+      <div class="view-tabs" role="tablist" aria-label="Output views">
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="activeView() === 'preview'"
+          [class.is-active]="activeView() === 'preview'"
+          (click)="setView('preview')"
+        >
+          <svg lucideEye size="16"></svg>
+          Preview
+        </button>
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="activeView() === 'html'"
+          [class.is-active]="activeView() === 'html'"
+          (click)="setView('html')"
+        >
+          <svg lucideFileCode size="16"></svg>
+          HTML
+        </button>
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="activeView() === 'ast'"
+          [class.is-active]="activeView() === 'ast'"
+          (click)="setView('ast')"
+        >
+          <svg lucidePanelRight size="16"></svg>
+          AST
+        </button>
+      </div>
+
+      @switch (activeView()) {
+        @case ('preview') {
+          <div class="preview-workbench">
+            <div class="preview-commandbar">
+              <div>
+                <h3>HTML Preview</h3>
+                <p>{{ document().sourceRows.length | number }} tags · srcdoc</p>
+              </div>
+              <button
+                class="quiet-button compact sync-toggle"
+                type="button"
+                [class.is-active]="syncEnabled()"
+                [class.is-paused]="!syncEnabled()"
+                [attr.aria-pressed]="syncEnabled()"
+                [title]="syncEnabled() ? 'Pause synchronized hover' : 'Resume synchronized hover'"
+                (click)="toggleSync()"
+              >
+                @if (syncEnabled()) {
+                  <svg lucideLink size="16"></svg>
+                  Sync on
+                } @else {
+                  <svg lucideUnlink size="16"></svg>
+                  Manual
+                }
+              </button>
+            </div>
+
+            <div class="preview-grid">
+              <section class="html-preview-pane" aria-label="Generated HTML preview">
+                <iframe
+                  #previewFrame
+                  class="html-preview-frame"
+                  title="Generated HTML preview"
+                  sandbox="allow-scripts allow-popups"
+                  [srcdoc]="previewSrcDoc()"
+                  (load)="onPreviewLoaded()"
+                ></iframe>
+              </section>
+
+              <section class="html-source-pane" aria-label="Generated HTML tags">
+                <div class="source-pane-header">
+                  <h3>HTML Tags</h3>
+                  <span>{{ syncEnabled() ? highlightedElementId() || 'idle' : 'manual' }}</span>
+                </div>
+
+                <div
+                  class="source-map"
+                  role="list"
+                  [class.is-sync-paused]="!syncEnabled()"
+                  (mouseover)="handleSourceMapHover($event)"
+                  (mouseleave)="handleSourceMapLeave()"
+                  (focusout)="handleSourceMapFocusOut($event)"
+                >
+                  @for (row of document().sourceRows; track row.id) {
+                    <div
+                      class="source-row"
+                      role="listitem"
+                      tabindex="0"
+                      [class.is-highlighted]="isHighlighted(row.nodeId)"
+                      [style.--depth]="row.depth"
+                      [attr.data-source-id]="row.nodeId"
+                      [attr.aria-label]="'Highlight preview element ' + row.nodeId"
+                      (focus)="handleSourceRowEnter(row.nodeId)"
+                    >
+                      <span class="source-line">
+                        <code class="source-tag">{{ row.openingTag }}</code>
+                        @if (!row.selfClosing) {
+                          <code class="source-close">{{ row.closingTag }}</code>
+                        }
+                      </span>
+                      <span class="source-meta">
+                        <span>{{ row.nodeId }}</span>
+                        @if (row.detail) {
+                          <small>{{ row.detail }}</small>
+                        }
+                      </span>
+                    </div>
+                  }
+                </div>
+              </section>
+            </div>
+          </div>
+        }
+        @case ('html') {
+          <div class="code-output">
+            <pre><code>{{ document().html }}</code></pre>
+          </div>
+        }
+        @case ('ast') {
+          <div class="ast-workbench">
+            <div class="ast-commandbar">
+              <div>
+                <h3>AST Structure</h3>
+                <p>
+                  {{ document().stats.nodes | number }} nodes · {{ astVisibleNodes().length }}
+                  visible
+                </p>
+              </div>
+
+              <div class="ast-actions">
+                <div class="ast-mode-tabs" role="tablist" aria-label="AST display modes">
+                  <button
+                    type="button"
+                    role="tab"
+                    [class.is-active]="astDisplayMode() === 'graph'"
+                    [attr.aria-selected]="astDisplayMode() === 'graph'"
+                    (click)="setAstDisplayMode('graph')"
+                  >
+                    <svg lucideGitBranch size="15"></svg>
+                    Graph
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    [class.is-active]="astDisplayMode() === 'tree'"
+                    [attr.aria-selected]="astDisplayMode() === 'tree'"
+                    (click)="setAstDisplayMode('tree')"
+                  >
+                    <svg lucideFileText size="15"></svg>
+                    Tree
+                  </button>
+                </div>
+
+                <button class="quiet-button compact" type="button" (click)="expandAllAstNodes()">
+                  Expand all
+                </button>
+                <button class="quiet-button compact" type="button" (click)="collapseAllAstNodes()">
+                  Collapse all
+                </button>
+              </div>
+            </div>
+
+            @if (astDisplayMode() === 'tree') {
+              <div class="ast-grid">
+                <section class="ast-tree-panel" aria-labelledby="ast-tree-heading">
+                  <h3 id="ast-tree-heading">
+                    <svg lucideFileText size="16"></svg>
+                    AST Tree
+                  </h3>
+                  <div class="ast-node-list" role="tree">
+                    @for (node of astVisibleNodes(); track node.id) {
+                      <div
+                        class="ast-node-row"
+                        role="treeitem"
+                        [class.is-collapsed]="node.collapsed"
+                        [class.is-leaf]="!node.childCount"
+                        [style.--depth]="node.depth"
+                        [attr.aria-expanded]="node.childCount ? !node.collapsed : null"
+                        [attr.data-ast-id]="node.id"
+                      >
+                        <button
+                          class="ast-node-toggle"
+                          type="button"
+                          [disabled]="!node.childCount"
+                          [attr.aria-label]="
+                            node.collapsed ? 'Expand ' + node.label : 'Collapse ' + node.label
+                          "
+                          (click)="toggleAstNode(node.id)"
+                        >
+                          @if (node.childCount) {
+                            @if (node.collapsed) {
+                              <svg lucideChevronRight size="15"></svg>
+                            } @else {
+                              <svg lucideChevronDown size="15"></svg>
+                            }
+                          }
+                        </button>
+
+                        <span class="ast-node-type">{{ node.type }}</span>
+                        <span class="ast-node-label">{{ node.label }}</span>
+                        <small>{{ node.detail }}</small>
+                      </div>
+                    }
+                  </div>
+                </section>
+
+                <section
+                  class="tree-panel element-tree-panel"
+                  aria-labelledby="element-tree-heading"
+                >
+                  <h3 id="element-tree-heading">
+                    <svg lucideCheck size="16"></svg>
+                    Elements
+                  </h3>
+                  <div class="tree-list">
+                    @for (row of document().elementTree; track row.id) {
+                      <div class="tree-row" [style.--depth]="row.depth">
+                        <span class="node-type">{{ row.label }}</span>
+                        <span class="node-label">{{ row.detail }}</span>
+                        <small>{{ row.childCount }} children</small>
+                      </div>
+                    }
+                  </div>
+                </section>
+              </div>
+            } @else {
+              <section class="ast-graph-panel" aria-label="Graphical AST tree">
+                <svg
+                  class="ast-graph-svg"
+                  role="img"
+                  aria-label="Graphical AST tree rendered with D3"
+                  [attr.width]="astGraph().width"
+                  [attr.height]="astGraph().height"
+                  [attr.viewBox]="astGraph().viewBox"
+                >
+                  <g class="ast-graph-links">
+                    @for (link of astGraph().links; track link.id) {
+                      <path class="ast-graph-link" [attr.d]="link.path"></path>
+                    }
+                  </g>
+                  <g class="ast-graph-nodes">
+                    @for (node of astGraph().nodes; track node.id) {
+                      <g
+                        class="ast-graph-node"
+                        [class.has-children]="node.childCount"
+                        [class.is-collapsed]="node.collapsed"
+                        [attr.transform]="'translate(' + node.x + ',' + node.y + ')'"
+                        [attr.tabindex]="node.childCount ? 0 : null"
+                        [attr.aria-label]="node.fullLabel + ' · ' + node.detail"
+                        (click)="toggleAstNode(node.id)"
+                        (keydown.enter)="toggleAstNode(node.id)"
+                      >
+                        <title>{{ node.fullLabel }} · {{ node.detail }}</title>
+                        <rect class="ast-graph-card" width="156" height="50" rx="8"></rect>
+                        <text class="ast-graph-type" x="12" y="19">{{ node.type }}</text>
+                        <text class="ast-graph-label" x="12" y="37">{{ node.label }}</text>
+                        @if (node.childCount) {
+                          <rect
+                            class="ast-graph-badge"
+                            [attr.x]="node.badgeX"
+                            y="6"
+                            [attr.width]="node.badgeWidth"
+                            height="17"
+                            rx="8.5"
+                          ></rect>
+                          <text class="ast-graph-count" [attr.x]="node.badgeCenterX" y="14.5">
+                            {{ node.badgeLabel }}
+                          </text>
+                        }
+                      </g>
+                    }
+                  </g>
+                </svg>
+              </section>
+            }
+          </div>
+
+          <details class="json-drawer">
+            <summary>
+              <svg lucideRefreshCw size="15"></svg>
+              Raw AST JSON
+            </summary>
+            <pre><code>{{ astJson() }}</code></pre>
+          </details>
+        }
+      }
+    </section>
+  </section>
+</main>
