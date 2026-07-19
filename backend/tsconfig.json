@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "../out-tsc/backend",
+    "types": ["node"],
+    "isolatedModules": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -1,0 +1,518 @@
+@if (!isAuthenticated()) {
+  <main class="auth-shell">
+    <section class="auth-panel">
+      <div class="brand auth-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg lucideBrain size="22"></svg>
+        </span>
+        <div>
+          <h1>NEATCODE</h1>
+          <p>{{ status() }}</p>
+        </div>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist" aria-label="Account mode">
+          <button type="button" [class.is-active]="authMode() === 'login'" (click)="setAuthMode('login')">
+            Sign in
+          </button>
+          <button type="button" [class.is-active]="authMode() === 'signup'" (click)="setAuthMode('signup')">
+            Sign up
+          </button>
+        </div>
+
+        <form class="auth-form" (ngSubmit)="submitAuth()">
+          @if (authMode() === 'signup') {
+            <label>
+              <span>Name</span>
+              <input
+                autocomplete="name"
+                type="text"
+                [ngModel]="authDisplayName()"
+                name="displayName"
+                (ngModelChange)="updateAuthDisplayName($event)"
+              />
+            </label>
+
+            <label>
+              <span>Starting level</span>
+              <select
+                [ngModel]="authCodingLevel()"
+                name="codingLevel"
+                (ngModelChange)="updateAuthCodingLevel($event)"
+              >
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+                <option value="expert">Expert</option>
+              </select>
+            </label>
+          }
+
+          <label>
+            <span>Email</span>
+            <input
+              autocomplete="email"
+              type="email"
+              [ngModel]="authEmail()"
+              name="email"
+              (ngModelChange)="updateAuthEmail($event)"
+            />
+          </label>
+
+          <label>
+            <span>Password</span>
+            <input
+              [autocomplete]="authMode() === 'signup' ? 'new-password' : 'current-password'"
+              type="password"
+              [ngModel]="authPassword()"
+              name="password"
+              (ngModelChange)="updateAuthPassword($event)"
+            />
+          </label>
+
+          @if (authError()) {
+            <p class="auth-error" role="alert">{{ authError() }}</p>
+          }
+
+          <button class="primary-button" type="submit" [disabled]="authLoading()">
+            <svg lucideSend size="16"></svg>
+            {{ authLoading() ? 'Working' : authMode() === 'signup' ? 'Create account' : 'Sign in' }}
+          </button>
+        </form>
+      </div>
+
+      <div class="auth-proof">
+        <div>
+          <strong>Private profile</strong>
+          <span>Scores, submissions, and questions belong to your account.</span>
+        </div>
+        <div>
+          <strong>Chosen level</strong>
+          <span>Your first JavaScript question starts from the level you pick.</span>
+        </div>
+        <div>
+          <strong>Adaptive path</strong>
+          <span>Future questions use your submitted refactors to choose the next focus.</span>
+        </div>
+      </div>
+    </section>
+  </main>
+} @else if (loading() && !selectedChallenge()) {
+  <main class="auth-shell queue-shell">
+    <section class="auth-panel queue-panel" aria-live="polite">
+      <div class="brand auth-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg lucideBrain size="22"></svg>
+        </span>
+        <div>
+          <h1>NEATCODE</h1>
+          <p>{{ status() }}</p>
+        </div>
+      </div>
+
+      <div class="queue-card">
+        <span class="queue-icon" aria-hidden="true">
+          <svg lucideSparkles size="22"></svg>
+        </span>
+        <div>
+          <h2>Preparing your question</h2>
+          <p>Signing in, reading your level, and preparing one function-based JavaScript question.</p>
+        </div>
+        <div class="queue-meter" aria-hidden="true"><i></i></div>
+      </div>
+    </section>
+  </main>
+} @else {
+  <main class="neat-shell">
+    <header class="toolbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg lucideBrain size="22"></svg>
+        </span>
+        <div>
+          <h1>NEATCODE</h1>
+          <p>{{ status() }} · {{ selectedChallenge()?.difficulty || 'practice' }}</p>
+        </div>
+      </div>
+
+      <div class="toolbar-actions">
+        <span class="store-pill">{{ currentUser()?.displayName || 'Account' }}</span>
+        <button class="quiet-button" type="button" (click)="logout()">Sign out</button>
+        <button
+          class="primary-button"
+          type="button"
+          [disabled]="submitting() || !selectedChallenge()"
+          (click)="submitRefactor()"
+        >
+          <svg lucideSend size="16"></svg>
+          {{ submitting() ? 'Scoring' : 'Submit' }}
+        </button>
+      </div>
+    </header>
+
+    @if (error()) {
+      <section class="error-strip" role="alert">
+        <svg lucideAlertTriangle size="17"></svg>
+        <span>{{ error() }}</span>
+        <button class="error-close" type="button" aria-label="Close error message" (click)="dismissError()">
+          <svg lucideX size="15"></svg>
+        </button>
+      </section>
+    }
+
+    <section class="metric-strip" aria-label="NEATCODE progress summary">
+      <div class="metric">
+        <span>Level</span>
+        <strong>{{ levelLabel() }}</strong>
+      </div>
+      <div class="metric">
+        <span>Total submissions</span>
+        <strong>{{ totalSubmissions() }}</strong>
+      </div>
+      <div class="metric metric-score" [style.--score]="averageScore()">
+        <div class="score-medallion" aria-hidden="true">
+          <strong>{{ averageScore() || '--' }}</strong>
+          <span>{{ averageScore() ? '/100' : 'score' }}</span>
+        </div>
+        <div class="metric-copy">
+          <span>Average score</span>
+          <small>Across solved questions</small>
+        </div>
+      </div>
+      <div class="metric">
+        <span>Time coded</span>
+        <strong>{{ practiceTimeLabel() }}</strong>
+      </div>
+      <div class="metric">
+        <span>Questions solved</span>
+        <strong>{{ solvedCount() }}</strong>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <aside class="panel challenge-panel" aria-label="Question brief">
+        @if (selectedChallenge(); as challenge) {
+          <div class="panel-header question-header">
+            <div>
+              <span class="eyebrow">Practice brief</span>
+              <h2>{{ challenge.title }}</h2>
+              <p>{{ challenge.applicationContext }} · {{ challenge.estimateMinutes }} min</p>
+            </div>
+            <svg lucideTarget size="18"></svg>
+          </div>
+
+          <section class="brief">
+            <p class="question-copy">{{ challenge.description }}</p>
+
+            <div class="tag-row">
+              @for (tag of challengeTagLabels(challenge); track tag) {
+                <span>{{ tag }}</span>
+              }
+            </div>
+
+            <div class="requirement-card">
+              <h3>Requirement</h3>
+              <ul class="check-list">
+                @for (item of challenge.instructions; track item) {
+                  <li>
+                    <svg lucideCheckCircle2 size="15"></svg>
+                    {{ item }}
+                  </li>
+                }
+              </ul>
+            </div>
+
+            <div class="hint-card">
+              <div>
+                <h3>Hints</h3>
+                <p>{{ hints().length }}/{{ challenge.hintCount }} opened</p>
+              </div>
+              <button
+                class="quiet-button"
+                type="button"
+                [disabled]="hints().length >= challenge.hintCount"
+                (click)="showNextHint()"
+              >
+                <svg lucideLightbulb size="15"></svg>
+                Show hint
+              </button>
+            </div>
+
+            <div class="hint-list">
+              @if (!hints().length) {
+                <p class="empty-copy">Use a hint only when you want a nudge.</p>
+              }
+
+              @for (hint of hints(); track hint.level) {
+                <article class="hint-item">
+                  <span>Hint {{ hint.level }}</span>
+                  <h4>{{ hint.title }}</h4>
+                  <p>{{ hint.body }}</p>
+                </article>
+              }
+            </div>
+          </section>
+        }
+      </aside>
+
+      <section class="panel editor-panel" aria-labelledby="editor-heading">
+        <div class="panel-header">
+          <div>
+            <span class="eyebrow">Refactor</span>
+            <h2 id="editor-heading">Solution workspace</h2>
+            <p>Keep the function output the same while improving the code.</p>
+          </div>
+          <div class="editor-meta">
+            <span>{{ selectedChallenge()?.runtime?.entryPoint || 'function' }}</span>
+            <span>{{ hints().length }} hints</span>
+          </div>
+        </div>
+
+        <div class="editor-toolbar" aria-label="Editor tools">
+          <button
+            class="quiet-button"
+            type="button"
+            [disabled]="runtimeLoading() || !selectedChallenge()"
+            (click)="runCode()"
+          >
+            <svg lucidePlay size="15"></svg>
+            {{ runtimeLoading() ? 'Running' : 'Run code' }}
+          </button>
+          <button class="quiet-button" type="button" [disabled]="formatting()" (click)="formatCode()">
+            <svg lucideSparkles size="15"></svg>
+            {{ formatting() ? 'Formatting' : 'Format' }}
+          </button>
+          <button
+            class="quiet-button"
+            type="button"
+            [disabled]="submitting() || !selectedChallenge()"
+            (click)="resetCode()"
+          >
+            <svg lucideRotateCcw size="15"></svg>
+            Reset code
+          </button>
+        </div>
+
+        <div class="editor-stage" [class.is-submitting]="submitting()" [attr.aria-busy]="submitting()">
+          <textarea
+            class="code-editor"
+            spellcheck="false"
+            aria-label="Refactor code editor"
+            [disabled]="submitting()"
+            [ngModel]="code()"
+            (ngModelChange)="updateCode($event)"
+          ></textarea>
+
+          @if (submitting()) {
+            <div class="editor-overlay" aria-live="polite">
+              <div class="editor-loader">
+                <span aria-hidden="true">
+                  <svg lucideSparkles size="18"></svg>
+                </span>
+                <strong>Checking your refactor</strong>
+                <small>Output is compared first. AI scoring starts only if behavior matches.</small>
+              </div>
+            </div>
+          }
+        </div>
+
+        <section class="run-console" aria-label="Run code output">
+          <div class="run-console-header">
+            <div>
+              <h3>Function output</h3>
+              <p>Calls {{ selectedChallenge()?.runtime?.entryPoint || 'the function' }} with your JSON arguments.</p>
+            </div>
+            <button
+              class="quiet-button"
+              type="button"
+              [disabled]="runtimeLoading() || !selectedChallenge()"
+              (click)="runCode()"
+            >
+              <svg lucidePlay size="15"></svg>
+              Run
+            </button>
+          </div>
+
+          <label class="argument-field">
+            <span>Input arguments</span>
+            <textarea
+              rows="3"
+              spellcheck="false"
+              [ngModel]="runInput()"
+              (ngModelChange)="updateRunInput($event)"
+            ></textarea>
+          </label>
+
+          @if (runInputError()) {
+            <p class="field-error">{{ runInputError() }}</p>
+          }
+
+          @if (runResult(); as outcome) {
+            <article class="run-output" [class.is-error]="outcome.status === 'threw'">
+              <span>{{ outcome.status === 'threw' ? 'Error' : 'Returned' }}</span>
+              <pre>{{ formatOutcome(outcome) }}</pre>
+              @if (outcome.fetchCalls.length) {
+                <small>{{ outcome.fetchCalls.length }} fetch call{{ outcome.fetchCalls.length === 1 ? '' : 's' }}</small>
+              }
+            </article>
+          } @else {
+            <p class="empty-copy">Run the function with your own arguments whenever you want a quick output check.</p>
+          }
+        </section>
+      </section>
+
+      <section class="panel result-panel" aria-labelledby="result-heading">
+        <div class="panel-header">
+          <div>
+            <span class="eyebrow">Submit</span>
+            <h2 id="result-heading">Result check</h2>
+            <p>Behavior first, refactoring score second.</p>
+          </div>
+          <svg lucideBarChart3 size="18"></svg>
+        </div>
+
+        @if (currentAttempt(); as attempt) {
+          @if (attempt.feedback.runtimeEvaluation; as runtime) {
+            <div
+              class="runtime-summary"
+              [class.is-pass]="runtime.passed"
+              [class.is-fail]="runtime.total > 0 && !runtime.passed"
+            >
+              <span class="runtime-score">{{ runtime.passedCount }}/{{ runtime.total }}</span>
+              <div>
+                <h3>{{ runtime.passed ? 'Result matched' : 'Result changed' }}</h3>
+                <p>{{ runtime.message }}</p>
+              </div>
+            </div>
+          }
+
+          @if (isBehaviorBlocked(attempt)) {
+            <section class="blocked-result">
+              <div class="blocked-heading">
+                <svg lucideAlertTriangle size="18"></svg>
+                <div>
+                  <h3>Fix the output first</h3>
+                  <p>The score is hidden until your function returns the same results as the starting code.</p>
+                </div>
+              </div>
+
+              <div class="runtime-case-list">
+                @for (test of failedRuntimeCases(attempt); track test.name) {
+                  <article class="runtime-case">
+                    <div class="runtime-case-header">
+                      <svg lucideAlertTriangle size="16"></svg>
+                      <h4>{{ test.name }}</h4>
+                    </div>
+                    <div class="runtime-pair-grid">
+                      <div class="runtime-output">
+                        <span>Expected</span>
+                        <code>{{ formatOutcome(test.baseline) }}</code>
+                      </div>
+                      <div class="runtime-output">
+                        <span>Your output</span>
+                        <code>{{ formatOutcome(test.submitted) }}</code>
+                      </div>
+                    </div>
+                  </article>
+                }
+              </div>
+            </section>
+          } @else {
+            <section class="score-card">
+              <div class="score-ring" [style.--score]="attempt.feedback.score.total">
+                <strong>{{ attempt.feedback.score.total }}</strong>
+                <span>/100</span>
+              </div>
+              <div>
+                <h3>AI refactoring score</h3>
+                <p>{{ attempt.feedback.coachNote }}</p>
+              </div>
+            </section>
+
+            @if (improvementAreas(attempt).length) {
+              <section class="area-card">
+                <h3>Areas to improve</h3>
+                <ul class="issue-list">
+                  @for (item of improvementAreas(attempt); track item) {
+                    <li>{{ item }}</li>
+                  }
+                </ul>
+              </section>
+            }
+
+            @if (nextChallenge(); as next) {
+              <div class="next-question">
+                <div>
+                  <span>Next adaptive question</span>
+                  <h3>{{ next.title }}</h3>
+                  <p>{{ labelForSkill(next.primarySkill) }} · {{ next.estimateMinutes }} min</p>
+                </div>
+                <button class="primary-button" type="button" (click)="startNextChallenge()">
+                  Start next
+                  <svg lucideChevronRight size="16"></svg>
+                </button>
+              </div>
+            } @else {
+              <div class="next-question next-question-lite">
+                <div>
+                  <span>Next adaptive question</span>
+                  <h3>Prepare another question</h3>
+                  <p>Generate the next practice item from your latest score.</p>
+                </div>
+                <button class="primary-button" type="button" [disabled]="loading()" (click)="prepareNextChallenge()">
+                  {{ loading() ? 'Preparing' : 'Prepare next' }}
+                  <svg lucideChevronRight size="16"></svg>
+                </button>
+              </div>
+            }
+          }
+        } @else {
+          <div class="result-empty">
+            <span aria-hidden="true">
+              <svg lucideCheckCircle2 size="18"></svg>
+            </span>
+            <div>
+              <h3>No submission yet</h3>
+              <p>Run the function as you work, then submit when the refactor is ready.</p>
+            </div>
+          </div>
+        }
+      </section>
+    </section>
+
+    <section class="progress-panel" aria-label="Skill profile">
+      <div class="progress-heading">
+        <div>
+          <span class="eyebrow">Adaptive profile</span>
+          <h2>{{ hasProfileSignals() ? 'Skill profile' : 'Profile starts after first submission' }}</h2>
+        </div>
+        <span>
+          <svg lucideClock size="15"></svg>
+          @if (hasProfileSignals()) {
+            Updated {{ profile()?.updatedAt | date: 'shortTime' }}
+          } @else {
+            Not calibrated yet
+          }
+        </span>
+      </div>
+
+      @if (hasProfileSignals()) {
+        <div class="skill-grid">
+          @for (skill of skillRows(); track skill.skill) {
+            <div class="skill-row">
+              <span>{{ skill.label }}</span>
+              <strong>{{ skill.value }}</strong>
+              <i [style.width.%]="skill.value"></i>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="profile-empty">
+          <strong>{{ levelLabel() }} baseline</strong>
+          <span>Submit one refactor to turn the starting level into a measured skill profile.</span>
+        </div>
+      }
+    </section>
+  </main>
+}

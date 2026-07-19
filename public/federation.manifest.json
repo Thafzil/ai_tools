@@ -1,3 +1,4 @@
 {
-  "markdownAstStudio": "http://127.0.0.1:4301/remoteEntry.json"
+  "markdownAstStudio": "http://127.0.0.1:4301/remoteEntry.json",
+  "neatCodeAcademy": "http://127.0.0.1:4302/remoteEntry.json"
 }

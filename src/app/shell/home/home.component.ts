@@ -1,12 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { LucideArrowRight, LucideBraces } from '@lucide/angular';
+import { LucideArrowRight, LucideBraces, LucideBrain } from '@lucide/angular';
 import { TOOL_CATALOG } from '../../tools/tool-catalog';
 
 @Component({
   selector: 'app-home',
-  imports: [CommonModule, RouterLink, LucideArrowRight, LucideBraces],
+  imports: [CommonModule, RouterLink, LucideArrowRight, LucideBraces, LucideBrain],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })

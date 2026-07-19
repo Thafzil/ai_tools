@@ -16,9 +16,20 @@ export const routes: Routes = [
     title: 'Markdown AST Studio',
   },
   {
+    path: 'tools/neatcode',
+    loadChildren: () =>
+      loadRemoteModule('neatCodeAcademy', './NeatCodeModule').then((m) => m.NeatCodeAcademyModule),
+    title: 'NEATCODE',
+  },
+  {
     path: 'markdown-ast-studio',
     pathMatch: 'full',
     redirectTo: 'tools/markdown-ast-studio',
+  },
+  {
+    path: 'neatcode',
+    pathMatch: 'full',
+    redirectTo: 'tools/neatcode',
   },
   {
     path: '**',

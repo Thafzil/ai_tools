@@ -29,4 +29,11 @@ describe('app routes', () => {
     expect(toolRoute?.loadChildren).toBeTruthy();
     expect(toolRoute?.title).toBe('Markdown AST Studio');
   });
+
+  it('should register NEATCODE as a federated tool route', () => {
+    const toolRoute = routes.find((candidate) => candidate.path === 'tools/neatcode');
+
+    expect(toolRoute?.loadChildren).toBeTruthy();
+    expect(toolRoute?.title).toBe('NEATCODE');
+  });
 });

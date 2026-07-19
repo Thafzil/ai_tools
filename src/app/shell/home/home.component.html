@@ -13,7 +13,14 @@
         <article class="tool-card">
           <div class="card-topline">
             <span class="tool-icon" aria-hidden="true">
-              <svg lucideBraces size="19"></svg>
+              @switch (tool.icon) {
+                @case ('brain') {
+                  <svg lucideBrain size="19"></svg>
+                }
+                @default {
+                  <svg lucideBraces size="19"></svg>
+                }
+              }
             </span>
             <span class="status">{{ tool.status }}</span>
           </div>
@@ -29,7 +36,7 @@
 
           <div class="card-footer">
             <span>{{
-              tool.backendMode === 'none' ? 'Ready in browser' : 'Connected workspace'
+              tool.backendMode === 'none' ? 'Ready in browser' : 'Account workspace'
             }}</span>
             <a
               class="launch-link"

@@ -45,12 +45,15 @@ import {
   LucideUnlink,
   LucideWrapText,
 } from '@lucide/angular';
+import { countLines, splitLines } from '../../shared/utils/text';
 import { ThemeService, type ThemeMode } from '../../shell/theme.service';
+import {
+  MARKDOWN_HISTORY_LIMIT,
+  MARKDOWN_STORAGE_KEY,
+  SAMPLE_MARKDOWN,
+} from './markdown-studio.constants';
 import { MarkdownProcessorService } from './markdown/markdown-processor.service';
 import type { MarkdownAstLike, MarkdownView } from './markdown/markdown.types';
-
-const STORAGE_KEY = 'decoders.markdown.source';
-const HISTORY_LIMIT = 100;
 
 type AstDisplayMode = 'graph' | 'tree';
 
@@ -105,41 +108,9 @@ interface AstGraphModel {
   width: number;
 }
 
-const SAMPLE_MARKDOWN = `# Product Release Notes
-
-> Convert Markdown into a transparent AST, then render it through a typed element model.
-
-## Highlights
-
-- **Live Markdown editor** with copy, paste, and export actions
-- GFM tables, task lists, links, images, and code blocks
-- AST rows and HTML element rows kept side by side
-- [Angular](https://angular.dev) friendly service boundaries
-
-## Delivery Checklist
-
-- [x] Parse Markdown into mdast
-- [x] Convert AST nodes into HTML element models
-- [x] Render safe HTML for preview
-- [ ] Add backend persistence when the workflow needs teams
-
-## Example Table
-
-| Layer | Responsibility | Status |
-| :--- | :--- | :---: |
-| Parser | Markdown to AST | Ready |
-| Renderer | AST to element model | Ready |
-| Preview | Element model to HTML | Ready |
-
-\`\`\`ts
-const document = markdownProcessor.process(source);
-console.log(document.ast, document.html);
-\`\`\`
-`;
-
 function readStoredMarkdown(): string {
   try {
-    return localStorage.getItem(STORAGE_KEY) || SAMPLE_MARKDOWN;
+    return localStorage.getItem(MARKDOWN_STORAGE_KEY) || SAMPLE_MARKDOWN;
   } catch {
     return SAMPLE_MARKDOWN;
   }
@@ -224,9 +195,7 @@ export class MarkdownStudioComponent implements AfterViewInit {
   protected readonly previewSrcDoc = computed<SafeHtml>(() =>
     this.sanitizer.bypassSecurityTrustHtml(this.toPreviewHtml()),
   );
-  protected readonly lineCount = computed(() =>
-    Math.max(1, this.markdown().split(/\r\n|\r|\n/).length),
-  );
+  protected readonly lineCount = computed(() => countLines(this.markdown()));
   protected readonly metrics = computed(() => {
     const stats = this.document().stats;
     return [
@@ -842,7 +811,7 @@ export class MarkdownStudioComponent implements AfterViewInit {
 
   private persist(value: string): void {
     try {
-      localStorage.setItem(STORAGE_KEY, value);
+      localStorage.setItem(MARKDOWN_STORAGE_KEY, value);
       this.savedAt.set(this.formatTime(new Date()));
       this.status.set('Saved locally');
     } catch {
@@ -903,8 +872,7 @@ export class MarkdownStudioComponent implements AfterViewInit {
     const end = editor.selectionEnd;
     const scrollTop = editor.scrollTop;
     const selected = editor.value.slice(start, end) || fallback;
-    const insertion = selected
-      .split(/\r\n|\r|\n/)
+    const insertion = splitLines(selected)
       .map((line) => `${prefix}${line}`)
       .join('\n');
     const next = `${editor.value.slice(0, start)}${insertion}${editor.value.slice(end)}`;
@@ -968,7 +936,7 @@ export class MarkdownStudioComponent implements AfterViewInit {
   }
 
   private trimHistory(history: EditorSnapshot[]): EditorSnapshot[] {
-    return history.slice(-HISTORY_LIMIT);
+    return history.slice(-MARKDOWN_HISTORY_LIMIT);
   }
 
   private restoreSelection(
