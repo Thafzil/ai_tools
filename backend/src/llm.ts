@@ -138,34 +138,37 @@ const generatedRuntimeCaseSchema = z.object({
   name: z.string().min(3).max(80),
 });
 
-const generatedHintSchema = z.preprocess((value) => {
-  if (typeof value === 'string') {
-    return {
-      body: value,
-      title: 'Code-specific hint',
-    };
-  }
+const generatedHintSchema = z.preprocess(
+  (value) => {
+    if (typeof value === 'string') {
+      return {
+        body: value,
+        title: 'Code-specific hint',
+      };
+    }
 
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    const body =
-      record['body'] ??
-      record['detail'] ??
-      record['hint'] ??
-      record['text'] ??
-      record['description'] ??
-      record['message'] ??
-      '';
-    const title = record['title'] ?? record['heading'] ?? record['name'] ?? 'Code-specific hint';
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      const body =
+        record['body'] ??
+        record['detail'] ??
+        record['hint'] ??
+        record['text'] ??
+        record['description'] ??
+        record['message'] ??
+        '';
+      const title = record['title'] ?? record['heading'] ?? record['name'] ?? 'Code-specific hint';
 
-    return { body, title };
-  }
+      return { body, title };
+    }
 
-  return value;
-}, z.object({
-  body: z.coerce.string().min(24).max(420),
-  title: z.coerce.string().min(3).max(80),
-}));
+    return value;
+  },
+  z.object({
+    body: z.coerce.string().min(24).max(420),
+    title: z.coerce.string().min(3).max(80),
+  }),
+);
 
 const generatedStringArraySchema = z.array(z.coerce.string().min(1).max(120)).catch([]);
 
@@ -210,10 +213,7 @@ const generatedChallengeSchema = generatedChallengeShape.superRefine((value, con
 const generatedMetadataShape = z.object({
   antiPatterns: generatedStringArraySchema,
   applicationContext: z.coerce.string().min(3).max(80),
-  description: z.coerce
-    .string()
-    .min(20)
-    .max(1200),
+  description: z.coerce.string().min(20).max(1200),
   estimateMinutes: z.coerce.number().int().min(5).max(30).catch(12),
   expectedTerms: generatedStringArraySchema,
   hints: z.array(generatedHintSchema).min(3).max(5),
@@ -247,7 +247,11 @@ const generatedMetadataSchema = generatedMetadataShape.superRefine((value, conte
   value.hints.forEach((hint, index) => {
     const text = `${hint.title} ${hint.body}`.toLowerCase();
 
-    if (/\b(clean up the code|main pain|check as you go|lock the behavior|look for the part)\b/.test(text)) {
+    if (
+      /\b(clean up the code|main pain|check as you go|lock the behavior|look for the part)\b/.test(
+        text,
+      )
+    ) {
       context.addIssue({
         code: 'custom',
         message: 'hints must point to concrete code areas, not generic coaching.',
@@ -291,31 +295,33 @@ const coachSchema = z.object({
 
 const scoreNumberSchema = z.coerce.number().catch(0);
 
-const scoreBreakdownSchema = z.object({
-  codeQuality: scoreNumberSchema,
-  complexity: scoreNumberSchema,
-  correctness: scoreNumberSchema,
-  errorHandling: scoreNumberSchema,
-  independence: scoreNumberSchema,
-  modularity: scoreNumberSchema,
-  naming: scoreNumberSchema,
-  reasoning: scoreNumberSchema,
-  restraint: scoreNumberSchema,
-  testability: scoreNumberSchema,
-  total: scoreNumberSchema,
-}).catch({
-  codeQuality: 0,
-  complexity: 0,
-  correctness: 100,
-  errorHandling: 0,
-  independence: 0,
-  modularity: 0,
-  naming: 0,
-  reasoning: 0,
-  restraint: 0,
-  testability: 0,
-  total: 0,
-});
+const scoreBreakdownSchema = z
+  .object({
+    codeQuality: scoreNumberSchema,
+    complexity: scoreNumberSchema,
+    correctness: scoreNumberSchema,
+    errorHandling: scoreNumberSchema,
+    independence: scoreNumberSchema,
+    modularity: scoreNumberSchema,
+    naming: scoreNumberSchema,
+    reasoning: scoreNumberSchema,
+    restraint: scoreNumberSchema,
+    testability: scoreNumberSchema,
+    total: scoreNumberSchema,
+  })
+  .catch({
+    codeQuality: 0,
+    complexity: 0,
+    correctness: 100,
+    errorHandling: 0,
+    independence: 0,
+    modularity: 0,
+    naming: 0,
+    reasoning: 0,
+    restraint: 0,
+    testability: 0,
+    total: 0,
+  });
 
 const reviewAnnotationSchema = z.object({
   detail: z.coerce.string().catch('Review this line for the focus skill.'),
@@ -366,7 +372,10 @@ function slugify(value: string): string {
 }
 
 function extractJsonObject(content: string): unknown {
-  const withoutFence = content.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  const withoutFence = content
+    .replace(/```(?:json)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
   const start = withoutFence.indexOf('{');
   const end = withoutFence.lastIndexOf('}');
 
@@ -433,18 +442,24 @@ function extractParameterCount(source: string, entryPoint: string): number {
   const escapedEntryPoint = escapeRegExp(entryPoint);
   const patterns = [
     new RegExp(`\\bfunction\\s+${escapedEntryPoint}\\s*\\(([^)]*)\\)`),
-    new RegExp(`\\b(?:const|let|var)\\s+${escapedEntryPoint}\\s*=\\s*(?:async\\s*)?\\(([^)]*)\\)\\s*=>`),
-    new RegExp(`\\b(?:const|let|var)\\s+${escapedEntryPoint}\\s*=\\s*(?:async\\s*)?([A-Za-z_$][\\w$]*)\\s*=>`),
+    new RegExp(
+      `\\b(?:const|let|var)\\s+${escapedEntryPoint}\\s*=\\s*(?:async\\s*)?\\(([^)]*)\\)\\s*=>`,
+    ),
+    new RegExp(
+      `\\b(?:const|let|var)\\s+${escapedEntryPoint}\\s*=\\s*(?:async\\s*)?([A-Za-z_$][\\w$]*)\\s*=>`,
+    ),
   ];
 
   for (const pattern of patterns) {
     const match = source.match(pattern);
 
     if (match?.[1]) {
-      return match[1]
-        .split(',')
-        .map((part) => part.trim())
-        .filter(Boolean).length || 1;
+      return (
+        match[1]
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean).length || 1
+      );
     }
   }
 
@@ -473,7 +488,10 @@ function includesWholeIdentifier(text: string, identifier: string): boolean {
   return new RegExp(`\\b${escapeRegExp(identifier)}\\b`).test(text);
 }
 
-function hintReferencesCode(hint: z.infer<typeof generatedHintSchema>, identifiers: string[]): boolean {
+function hintReferencesCode(
+  hint: z.infer<typeof generatedHintSchema>,
+  identifiers: string[],
+): boolean {
   const text = `${hint.title} ${hint.body}`;
 
   if (/\bline\s*\d+\b/i.test(text)) {
@@ -520,20 +538,28 @@ function practiceSurfaceIssues(source: string, difficulty: ChallengeDifficulty):
   const minimumLocalVariables = difficulty === 'beginner' ? 1 : 2;
 
   if (lineCount < minimumLines[difficulty]) {
-    issues.push(`The function is too small for ${difficulty}; create at least ${minimumLines[difficulty]} meaningful lines.`);
+    issues.push(
+      `The function is too small for ${difficulty}; create at least ${minimumLines[difficulty]} meaningful lines.`,
+    );
   }
 
   if (!hasBranchOrLoop(source)) {
-    issues.push('The function needs at least one visible branch or loop so the learner has something meaningful to improve.');
+    issues.push(
+      'The function needs at least one visible branch or loop so the learner has something meaningful to improve.',
+    );
   }
 
   if (localVariableCount(source) < minimumLocalVariables) {
-    issues.push(`The function needs at least ${minimumLocalVariables} local variable${minimumLocalVariables === 1 ? '' : 's'} with room for naming or structure improvement.`);
+    issues.push(
+      `The function needs at least ${minimumLocalVariables} local variable${minimumLocalVariables === 1 ? '' : 's'} with room for naming or structure improvement.`,
+    );
   }
 
   if (difficulty === 'beginner') {
     if (hasRecursiveCall(source)) {
-      issues.push('Beginner exercises must not use recursion. Use a simple loop or branch instead.');
+      issues.push(
+        'Beginner exercises must not use recursion. Use a simple loop or branch instead.',
+      );
     }
 
     if (/\b(async|await|Promise|try|catch)\b/.test(source)) {
@@ -566,7 +592,9 @@ function metadataSpecificityIssues(
   }
 
   if (namedIdentifierCount < 1) {
-    issues.push('description must mention at least one real identifier or code path from the function');
+    issues.push(
+      'description must mention at least one real identifier or code path from the function',
+    );
   }
 
   metadata.hints.forEach((hint, index) => {
@@ -577,7 +605,9 @@ function metadataSpecificityIssues(
     }
 
     if (!hintReferencesCode(hint, identifiers)) {
-      issues.push(`hint ${index + 1} must cite a line number or exact identifier from the messy code`);
+      issues.push(
+        `hint ${index + 1} must cite a line number or exact identifier from the messy code`,
+      );
     }
   });
 
@@ -594,7 +624,11 @@ function limitText(value: string, maxLength: number): string {
   return `${trimmed.slice(0, maxLength - 1).trimEnd()}`;
 }
 
-function sanitizeHintBody(body: string, focusSkill: SkillId, difficulty: ChallengeDifficulty): string {
+function sanitizeHintBody(
+  body: string,
+  focusSkill: SkillId,
+  difficulty: ChallengeDifficulty,
+): string {
   if (difficulty === 'beginner' && /\b(recursion|recursive|recursively)\b/i.test(body)) {
     return 'Keep this beginner exercise inside the existing loop or branch. Improve the named line by making the current flow clearer without adding recursion.';
   }
@@ -603,7 +637,11 @@ function sanitizeHintBody(body: string, focusSkill: SkillId, difficulty: Challen
     return body;
   }
 
-  if (/\b(return\s+null|fallback|handle invalid|invalid .* by|try\s*\/?\s*catch|catch\b|throw\b|default value)\b/i.test(body)) {
+  if (
+    /\b(return\s+null|fallback|handle invalid|invalid .* by|try\s*\/?\s*catch|catch\b|throw\b|default value)\b/i.test(
+      body,
+    )
+  ) {
     return 'Keep the existing output and error behavior stable here; improve the named line by simplifying the current flow, names, repeated expression, or responsibility boundary without adding a new fallback.';
   }
 
@@ -632,7 +670,9 @@ function extractCodeAnchors(source: string, entryPoint: string): CodeAnchor[] {
 
   source.split('\n').forEach((line, index) => {
     const lineNumber = index + 1;
-    const functionMatch = line.match(new RegExp(`\\bfunction\\s+${escapeRegExp(entryPoint)}\\s*\\(([^)]*)\\)`));
+    const functionMatch = line.match(
+      new RegExp(`\\bfunction\\s+${escapeRegExp(entryPoint)}\\s*\\(([^)]*)\\)`),
+    );
     const variableMatch = line.match(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/);
 
     if (functionMatch) {
@@ -714,7 +754,9 @@ function anchorMetadataToCode(
   if (
     descriptionWords < 45 ||
     !includesWholeIdentifier(description, entryPoint) ||
-    !identifiers.some((identifier) => identifier !== entryPoint && includesWholeIdentifier(description, identifier))
+    !identifiers.some(
+      (identifier) => identifier !== entryPoint && includesWholeIdentifier(description, identifier),
+    )
   ) {
     description = `${description} In ${entryPoint}, pay attention to ${anchorSummary || 'the main return path'} because those paths drive the result the function returns. Keep the same output for the same inputs while making the ${focusLabel} issue easier to understand and maintain.`;
   }
@@ -768,7 +810,9 @@ function cleanCodeFence(value: string): string {
 
 function codeCandidateFromResponse(value: string): string {
   const cleaned = cleanCodeFence(value);
-  const codeStart = cleaned.search(/\b(?:async\s+function|function|const|let|var)\s+[A-Za-z_$][\w$]*/);
+  const codeStart = cleaned.search(
+    /\b(?:async\s+function|function|const|let|var)\s+[A-Za-z_$][\w$]*/,
+  );
 
   return codeStart > 0 ? cleaned.slice(codeStart).trim() : cleaned;
 }
@@ -806,7 +850,12 @@ function publicRequirementsFor(focusSkill: SkillId): string[] {
 
 function cleanTags(value: string[]): string[] {
   return cleanArray(value, [], 6)
-    .map((tag) => tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''))
+    .map((tag) =>
+      tag
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, ''),
+    )
     .filter((tag) => !/^(formatting|spacing|indentation|semicolons?)$/.test(tag))
     .filter(Boolean)
     .slice(0, 6);
@@ -846,10 +895,7 @@ const placeholderFeedbackPattern =
   /\b(one fair summary sentence|specific mastered|specific remaining|specific area|next practice recommendation)\b/i;
 
 function normalizeCodeForSimilarity(source: string): string {
-  return cleanCodeFence(source)
-    .replace(/\s+/g, '')
-    .replace(/;+/g, ';')
-    .trim();
+  return cleanCodeFence(source).replace(/\s+/g, '').replace(/;+/g, ';').trim();
 }
 
 function isMostlyUnchanged(original: string, submitted: string): boolean {
@@ -1001,7 +1047,11 @@ Original code:
 ${messyCode.slice(0, 5000)}`;
 }
 
-function stagedRuntimeCasesPrompt(entryPoint: string, parameterCount: number, messyCode: string): string {
+function stagedRuntimeCasesPrompt(
+  entryPoint: string,
+  parameterCount: number,
+  messyCode: string,
+): string {
   return `Return JSON only with exactly this shape:
 {"testCases":[{"name":"scenario name","args":[/* function arguments */]}]}
 
@@ -1221,7 +1271,8 @@ function challengeFromModel(
   const slug = slugify(title);
   const startingCode = cleanCodeFence(raw.messyCode);
   const referenceCode = cleanCodeFence(raw.referenceCode);
-  const entryPoint = resolveEntryPoint(raw.entryPoint, startingCode, referenceCode) || raw.entryPoint.trim();
+  const entryPoint =
+    resolveEntryPoint(raw.entryPoint, startingCode, referenceCode) || raw.entryPoint.trim();
   const testCases = raw.testCases.slice(0, 5);
 
   return {
@@ -1276,10 +1327,13 @@ function finalizeGeneratedChallenge(
   const targetDifficulty = difficultyForProfile(options.profile, options.focusSkill);
   const startingCode = cleanCodeFence(raw.messyCode);
   const referenceCode = cleanCodeFence(raw.referenceCode);
-  const entryPoint = resolveEntryPoint(raw.entryPoint, startingCode, referenceCode) || raw.entryPoint.trim();
+  const entryPoint =
+    resolveEntryPoint(raw.entryPoint, startingCode, referenceCode) || raw.entryPoint.trim();
 
   if (!entryPoint) {
-    throw new Error('Generated challenge did not define the same public function in both code versions.');
+    throw new Error(
+      'Generated challenge did not define the same public function in both code versions.',
+    );
   }
 
   if (!hasValidJavaScriptSyntax(startingCode) || !hasValidJavaScriptSyntax(referenceCode)) {
@@ -1289,7 +1343,9 @@ function finalizeGeneratedChallenge(
   const surfaceIssues = practiceSurfaceIssues(startingCode, targetDifficulty);
 
   if (surfaceIssues.length) {
-    throw new Error(`Generated challenge is not suitable for ${targetDifficulty}: ${surfaceIssues.join(' ')}`);
+    throw new Error(
+      `Generated challenge is not suitable for ${targetDifficulty}: ${surfaceIssues.join(' ')}`,
+    );
   }
 
   const metadata = generatedMetadataSchema.parse({
@@ -1487,10 +1543,8 @@ Return a corrected complete challenge. Keep it smaller and simpler, but preserve
     options: GenerateChallengeOptions,
   ): Promise<z.infer<typeof generatedChallengeSchema>> {
     const targetDifficulty = difficultyForProfile(options.profile, options.focusSkill);
-    const messyCode = await this.requestJavaScript(
-      stagedCodePrompt(options),
-      7,
-      (code) => practiceSurfaceIssues(code, targetDifficulty),
+    const messyCode = await this.requestJavaScript(stagedCodePrompt(options), 7, (code) =>
+      practiceSurfaceIssues(code, targetDifficulty),
     );
     const messyEntryPoint = extractDefinedEntryPoints(messyCode).find(
       (name) => !PLACEHOLDER_FUNCTION_NAMES.has(name),
@@ -1540,11 +1594,19 @@ Return a corrected complete challenge. Keep it smaller and simpler, but preserve
       );
     }
 
-    metadata = anchorMetadataToCode(metadata, entryPoint, messyCode, options.focusSkill, targetDifficulty);
+    metadata = anchorMetadataToCode(
+      metadata,
+      entryPoint,
+      messyCode,
+      options.focusSkill,
+      targetDifficulty,
+    );
     const metadataIssues = metadataSpecificityIssues(metadata, entryPoint, messyCode);
 
     if (metadataIssues.length) {
-      console.warn(`AI metadata was too generic; requesting a code-specific rewrite: ${metadataIssues.join('; ')}`);
+      console.warn(
+        `AI metadata was too generic; requesting a code-specific rewrite: ${metadataIssues.join('; ')}`,
+      );
       metadata = await this.requestJson(
         stagedMetadataRepairPrompt(options, entryPoint, messyCode, metadata, metadataIssues),
         generatedMetadataSchema,
@@ -1552,13 +1614,21 @@ Return a corrected complete challenge. Keep it smaller and simpler, but preserve
         jsonSystemPrompt,
         2,
       );
-      metadata = anchorMetadataToCode(metadata, entryPoint, messyCode, options.focusSkill, targetDifficulty);
+      metadata = anchorMetadataToCode(
+        metadata,
+        entryPoint,
+        messyCode,
+        options.focusSkill,
+        targetDifficulty,
+      );
     }
 
     const remainingMetadataIssues = metadataSpecificityIssues(metadata, entryPoint, messyCode);
 
     if (remainingMetadataIssues.length) {
-      throw new Error(`The model returned metadata that was still too generic: ${remainingMetadataIssues.join('; ')}`);
+      throw new Error(
+        `The model returned metadata that was still too generic: ${remainingMetadataIssues.join('; ')}`,
+      );
     }
 
     const rawChallenge = {
@@ -1618,7 +1688,9 @@ Return a corrected complete challenge. Keep it smaller and simpler, but preserve
 
     return {
       coachNote: coachNote || 'AI reviewed the refactor after the output matched.',
-      improvements: improvements.length ? improvements : ['Kept the runtime output aligned with the original code.'],
+      improvements: improvements.length
+        ? improvements
+        : ['Kept the runtime output aligned with the original code.'],
       missedIssues,
       nextRecommendation: nextRecommendation || 'Keep practicing the current focus skill.',
       regressions,
@@ -1650,7 +1722,7 @@ Return a corrected complete challenge. Keep it smaller and simpler, but preserve
             { content: `${prompt}${repairNote}`, role: 'user' },
           ],
           model: this.config.model,
-          temperature: this.config.model.includes('gemma') ? 0.2 : 0.35,
+          temperature: this.config.model.includes('gemma') ? 0.2 : 1,
           top_p: 0.9,
         },
         { timeout: this.config.timeoutMs },
@@ -1660,9 +1732,17 @@ Return a corrected complete challenge. Keep it smaller and simpler, but preserve
       const hasStub = INCOMPLETE_CODE_PATTERN.test(code);
       const hasValidSyntax = hasValidJavaScriptSyntax(code);
       const validationIssues =
-        code.length >= 80 && entryPoints.length && !hasStub && hasValidSyntax ? validateCode(code) : [];
+        code.length >= 80 && entryPoints.length && !hasStub && hasValidSyntax
+          ? validateCode(code)
+          : [];
 
-      if (code.length >= 80 && entryPoints.length && !hasStub && hasValidSyntax && !validationIssues.length) {
+      if (
+        code.length >= 80 &&
+        entryPoints.length &&
+        !hasStub &&
+        hasValidSyntax &&
+        !validationIssues.length
+      ) {
         return code;
       }
 
@@ -1724,6 +1804,8 @@ Return a corrected JSON object only. Keep the same task, but fix the invalid fie
       }
     }
 
-    throw new Error(`The model did not return valid JSON for the requested task: ${lastValidationDetail}`);
+    throw new Error(
+      `The model did not return valid JSON for the requested task: ${lastValidationDetail}`,
+    );
   }
 }
