@@ -62,6 +62,8 @@ class ApiError extends Error {
 
 interface PracticeStats {
   acceptedSubmissions: number;
+  averageScore: number;
+  questionsSolved: number;
   totalPracticeSeconds: number;
   totalSubmissions: number;
 }
@@ -211,9 +213,23 @@ async function buildPracticeStats(
   userId: string,
 ): Promise<PracticeStats> {
   const attempts = await repository.listAttempts(userId, 1000);
+  const acceptedAttempts = attempts.filter((attempt) => attempt.feedback.runtimeEvaluation?.passed);
+  const bestScoreByChallenge = new Map<string, number>();
+
+  for (const attempt of acceptedAttempts) {
+    const score = Math.max(0, attempt.feedback.score.total || 0);
+    const bestScore = bestScoreByChallenge.get(attempt.challengeId) ?? 0;
+    bestScoreByChallenge.set(attempt.challengeId, Math.max(bestScore, score));
+  }
+
+  const bestScores = Array.from(bestScoreByChallenge.values());
 
   return {
-    acceptedSubmissions: attempts.filter((attempt) => attempt.feedback.runtimeEvaluation?.passed).length,
+    acceptedSubmissions: acceptedAttempts.length,
+    averageScore: bestScores.length
+      ? Math.round(bestScores.reduce((total, score) => total + score, 0) / bestScores.length)
+      : 0,
+    questionsSolved: bestScoreByChallenge.size,
     totalPracticeSeconds: attempts.reduce(
       (total, attempt) => total + Math.max(0, attempt.durationSeconds || 0),
       0,

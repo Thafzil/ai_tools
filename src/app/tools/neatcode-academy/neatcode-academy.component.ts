@@ -47,6 +47,8 @@ interface SkillRow {
 
 const emptyPracticeStats: PracticeStats = {
   acceptedSubmissions: 0,
+  averageScore: 0,
+  questionsSolved: 0,
   totalPracticeSeconds: 0,
   totalSubmissions: 0,
 };
@@ -107,9 +109,12 @@ export class NeatCodeAcademyComponent implements OnInit {
   protected readonly behaviorResult = computed<RuntimeEvaluation | null>(
     () => this.lastAttempt()?.feedback.runtimeEvaluation ?? null,
   );
+  protected readonly isCodingTimerRunning = computed(() => this.timerState() === 'running');
   protected readonly isAuthenticated = computed(() => !!this.currentUser());
   protected readonly hasProfileSignals = computed(() => (this.profile()?.totalAttempts ?? 0) > 0);
-  protected readonly averageScore = computed(() => this.calculateAverageScore(this.profile()));
+  protected readonly averageScore = computed(() =>
+    this.stats().averageScore || this.calculateAverageScore(this.profile()),
+  );
   protected readonly currentAttempt = computed(() => {
     const attempt = this.lastAttempt();
     const challenge = this.selectedChallenge();
@@ -123,7 +128,7 @@ export class NeatCodeAcademyComponent implements OnInit {
         (this.timerState() === 'running' ? this.elapsedSeconds() : 0),
     ),
   );
-  protected readonly solvedCount = computed(() => this.stats().acceptedSubmissions);
+  protected readonly solvedCount = computed(() => this.stats().questionsSolved ?? this.stats().acceptedSubmissions);
   protected readonly totalSubmissions = computed(() => this.stats().totalSubmissions);
 
   protected readonly skillRows = computed<SkillRow[]>(() => {
@@ -445,6 +450,10 @@ export class NeatCodeAcademyComponent implements OnInit {
     this.runResult.set(null);
   }
 
+  protected beginCodingSession(): void {
+    this.startSolveTimer();
+  }
+
   protected labelForSkill(skill: SkillId | string | undefined): string {
     return skill ? labelize(skill) : 'Practice';
   }
@@ -636,16 +645,20 @@ export class NeatCodeAcademyComponent implements OnInit {
   }
 
   private formatDuration(seconds: number): string {
-    const minutes = Math.max(0, Math.round(seconds / 60));
+    const safeSeconds = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const remainingSeconds = safeSeconds % 60;
 
-    if (minutes < 60) {
-      return `${minutes} min`;
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${remainingSeconds}s`;
     }
 
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
+    if (minutes > 0) {
+      return `${minutes}m ${remainingSeconds}s`;
+    }
 
-    return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+    return `${remainingSeconds}s`;
   }
 
   private defaultRunInputFor(challenge: Challenge): string {

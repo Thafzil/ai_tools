@@ -171,6 +171,8 @@ export interface PublicUser {
 
 export interface PracticeStats {
   acceptedSubmissions: number;
+  averageScore: number;
+  questionsSolved: number;
   totalPracticeSeconds: number;
   totalSubmissions: number;
 }

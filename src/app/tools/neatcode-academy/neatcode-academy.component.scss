@@ -505,6 +505,45 @@ button:disabled {
   }
 }
 
+.metric-time {
+  strong {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.metric-time.is-live {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%),
+    var(--panel);
+}
+
+.live-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #16a34a;
+  box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.12);
+  animation: live-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.18);
+    opacity: 0.74;
+  }
+}
+
 .score-medallion {
   --score: 0;
 

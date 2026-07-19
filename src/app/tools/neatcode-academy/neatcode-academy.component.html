@@ -177,12 +177,17 @@
         </div>
         <div class="metric-copy">
           <span>Average score</span>
-          <small>Across solved questions</small>
+          <small>Best score per solved question</small>
         </div>
       </div>
-      <div class="metric">
+      <div class="metric metric-time" [class.is-live]="isCodingTimerRunning()">
         <span>Time coded</span>
-        <strong>{{ practiceTimeLabel() }}</strong>
+        <strong>
+          @if (isCodingTimerRunning()) {
+            <i class="live-dot" aria-hidden="true"></i>
+          }
+          {{ practiceTimeLabel() }}
+        </strong>
       </div>
       <div class="metric">
         <span>Questions solved</span>
@@ -301,6 +306,9 @@
             aria-label="Refactor code editor"
             [disabled]="submitting()"
             [ngModel]="code()"
+            (focus)="beginCodingSession()"
+            (pointerdown)="beginCodingSession()"
+            (keydown)="beginCodingSession()"
             (ngModelChange)="updateCode($event)"
           ></textarea>
 
