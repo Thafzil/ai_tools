@@ -45,6 +45,12 @@ interface ScoreSubmissionOptions {
   submittedCode: string;
 }
 
+interface CodeAnchor {
+  identifier: string;
+  line: number;
+  source: string;
+}
+
 const PLACEHOLDER_FUNCTION_NAMES = new Set([
   'functionName',
   'solution',
@@ -60,6 +66,53 @@ const PLACEHOLDER_METADATA_TITLES = new Set([
 const PLACEHOLDER_METADATA_TAGS = new Set(['code-topic', 'tag']);
 const INCOMPLETE_CODE_PATTERN =
   /TODO|Code goes here|Return the new object|placeholder|your code here/i;
+const JAVASCRIPT_IDENTIFIER_SKIP_WORDS = new Set([
+  'Array',
+  'Boolean',
+  'Error',
+  'JSON',
+  'Math',
+  'Number',
+  'Object',
+  'Promise',
+  'RegExp',
+  'String',
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'default',
+  'delete',
+  'do',
+  'else',
+  'export',
+  'false',
+  'finally',
+  'for',
+  'function',
+  'if',
+  'import',
+  'in',
+  'instanceof',
+  'let',
+  'new',
+  'null',
+  'return',
+  'switch',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typeof',
+  'undefined',
+  'var',
+  'void',
+  'while',
+]);
 
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
@@ -85,10 +138,34 @@ const generatedRuntimeCaseSchema = z.object({
   name: z.string().min(3).max(80),
 });
 
-const generatedHintSchema = z.object({
-  body: z.string().min(24).max(420),
-  title: z.string().min(3).max(80),
-});
+const generatedHintSchema = z.preprocess((value) => {
+  if (typeof value === 'string') {
+    return {
+      body: value,
+      title: 'Code-specific hint',
+    };
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const body =
+      record['body'] ??
+      record['detail'] ??
+      record['hint'] ??
+      record['text'] ??
+      record['description'] ??
+      record['message'] ??
+      '';
+    const title = record['title'] ?? record['heading'] ?? record['name'] ?? 'Code-specific hint';
+
+    return { body, title };
+  }
+
+  return value;
+}, z.object({
+  body: z.coerce.string().min(24).max(420),
+  title: z.coerce.string().min(3).max(80),
+}));
 
 const generatedStringArraySchema = z.array(z.coerce.string().min(1).max(120)).catch([]);
 
@@ -374,6 +451,283 @@ function extractParameterCount(source: string, entryPoint: string): number {
   return 1;
 }
 
+function extractCodeIdentifiers(source: string, entryPoint: string): string[] {
+  const identifiers = new Set<string>([entryPoint]);
+
+  for (const match of source.matchAll(/\b[A-Za-z_$][\w$]*\b/g)) {
+    const identifier = match[0];
+
+    if (
+      identifier.length > 2 &&
+      !JAVASCRIPT_IDENTIFIER_SKIP_WORDS.has(identifier) &&
+      !PLACEHOLDER_FUNCTION_NAMES.has(identifier)
+    ) {
+      identifiers.add(identifier);
+    }
+  }
+
+  return Array.from(identifiers).slice(0, 28);
+}
+
+function includesWholeIdentifier(text: string, identifier: string): boolean {
+  return new RegExp(`\\b${escapeRegExp(identifier)}\\b`).test(text);
+}
+
+function hintReferencesCode(hint: z.infer<typeof generatedHintSchema>, identifiers: string[]): boolean {
+  const text = `${hint.title} ${hint.body}`;
+
+  if (/\bline\s*\d+\b/i.test(text)) {
+    return true;
+  }
+
+  return identifiers.some((identifier) => includesWholeIdentifier(text, identifier));
+}
+
+function hasBranchOrLoop(source: string): boolean {
+  return /\b(if|for|while|switch)\s*\(|\.(forEach|map|filter|reduce|some|every)\s*\(/.test(source);
+}
+
+function meaningfulLineCount(source: string): number {
+  return source
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !/^[{});]+$/.test(line)).length;
+}
+
+function localVariableCount(source: string): number {
+  return Array.from(source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)).length;
+}
+
+function hasRecursiveCall(source: string): boolean {
+  const entryPoint = extractDefinedEntryPoints(source)[0];
+
+  if (!entryPoint) {
+    return false;
+  }
+
+  return (source.match(new RegExp(`\\b${escapeRegExp(entryPoint)}\\s*\\(`, 'g')) || []).length > 1;
+}
+
+function practiceSurfaceIssues(source: string, difficulty: ChallengeDifficulty): string[] {
+  const issues: string[] = [];
+  const lineCount = meaningfulLineCount(source);
+  const minimumLines: Record<ChallengeDifficulty, number> = {
+    advanced: 22,
+    beginner: 6,
+    expert: 32,
+    intermediate: 14,
+  };
+  const minimumLocalVariables = difficulty === 'beginner' ? 1 : 2;
+
+  if (lineCount < minimumLines[difficulty]) {
+    issues.push(`The function is too small for ${difficulty}; create at least ${minimumLines[difficulty]} meaningful lines.`);
+  }
+
+  if (!hasBranchOrLoop(source)) {
+    issues.push('The function needs at least one visible branch or loop so the learner has something meaningful to improve.');
+  }
+
+  if (localVariableCount(source) < minimumLocalVariables) {
+    issues.push(`The function needs at least ${minimumLocalVariables} local variable${minimumLocalVariables === 1 ? '' : 's'} with room for naming or structure improvement.`);
+  }
+
+  if (difficulty === 'beginner') {
+    if (hasRecursiveCall(source)) {
+      issues.push('Beginner exercises must not use recursion. Use a simple loop or branch instead.');
+    }
+
+    if (/\b(async|await|Promise|try|catch)\b/.test(source)) {
+      issues.push('Beginner exercises must avoid async, promises, and try/catch.');
+    }
+  }
+
+  return issues;
+}
+
+function metadataSpecificityIssues(
+  metadata: z.infer<typeof generatedMetadataSchema>,
+  entryPoint: string,
+  messyCode: string,
+): string[] {
+  const issues: string[] = [];
+  const identifiers = extractCodeIdentifiers(messyCode, entryPoint);
+  const description = metadata.description.trim();
+  const descriptionWords = description.split(/\s+/).filter(Boolean).length;
+  const namedIdentifierCount = identifiers
+    .filter((identifier) => identifier !== entryPoint)
+    .filter((identifier) => includesWholeIdentifier(description, identifier)).length;
+
+  if (descriptionWords < 45) {
+    issues.push('description is too short and needs a concrete multi-sentence brief');
+  }
+
+  if (!includesWholeIdentifier(description, entryPoint)) {
+    issues.push(`description must name the public function ${entryPoint}`);
+  }
+
+  if (namedIdentifierCount < 1) {
+    issues.push('description must mention at least one real identifier or code path from the function');
+  }
+
+  metadata.hints.forEach((hint, index) => {
+    const hintWords = hint.body.trim().split(/\s+/).filter(Boolean).length;
+
+    if (hintWords < 16) {
+      issues.push(`hint ${index + 1} is too short to be useful`);
+    }
+
+    if (!hintReferencesCode(hint, identifiers)) {
+      issues.push(`hint ${index + 1} must cite a line number or exact identifier from the messy code`);
+    }
+  });
+
+  return issues;
+}
+
+function limitText(value: string, maxLength: number): string {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, maxLength - 1).trimEnd()}`;
+}
+
+function sanitizeHintBody(body: string, focusSkill: SkillId, difficulty: ChallengeDifficulty): string {
+  if (difficulty === 'beginner' && /\b(recursion|recursive|recursively)\b/i.test(body)) {
+    return 'Keep this beginner exercise inside the existing loop or branch. Improve the named line by making the current flow clearer without adding recursion.';
+  }
+
+  if (focusSkill === 'error-handling') {
+    return body;
+  }
+
+  if (/\b(return\s+null|fallback|handle invalid|invalid .* by|try\s*\/?\s*catch|catch\b|throw\b|default value)\b/i.test(body)) {
+    return 'Keep the existing output and error behavior stable here; improve the named line by simplifying the current flow, names, repeated expression, or responsibility boundary without adding a new fallback.';
+  }
+
+  return body;
+}
+
+function extractCodeAnchors(source: string, entryPoint: string): CodeAnchor[] {
+  const anchors: CodeAnchor[] = [];
+  const seen = new Set<string>();
+
+  const addAnchor = (line: number, identifier: string, rawSource: string): void => {
+    const cleanIdentifier = identifier.replace(/[^A-Za-z0-9_$ -]/g, '').trim() || entryPoint;
+    const key = `${line}:${cleanIdentifier}`;
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    anchors.push({
+      identifier: cleanIdentifier,
+      line,
+      source: rawSource.trim().slice(0, 140),
+    });
+  };
+
+  source.split('\n').forEach((line, index) => {
+    const lineNumber = index + 1;
+    const functionMatch = line.match(new RegExp(`\\bfunction\\s+${escapeRegExp(entryPoint)}\\s*\\(([^)]*)\\)`));
+    const variableMatch = line.match(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/);
+
+    if (functionMatch) {
+      addAnchor(lineNumber, entryPoint, line);
+
+      for (const parameter of functionMatch[1]?.split(',') ?? []) {
+        const name = parameter.trim();
+
+        if (isJavaScriptIdentifier(name)) {
+          addAnchor(lineNumber, name, line);
+        }
+      }
+    }
+
+    if (variableMatch?.[1]) {
+      addAnchor(lineNumber, variableMatch[1], line);
+    }
+
+    if (/\bif\s*\(/.test(line)) {
+      addAnchor(lineNumber, 'condition branch', line);
+    }
+
+    if (/\b(for|while)\s*\(|\.(forEach|map|filter|reduce)\s*\(/.test(line)) {
+      addAnchor(lineNumber, 'loop or collection step', line);
+    }
+
+    if (/\breturn\b/.test(line)) {
+      addAnchor(lineNumber, 'return value', line);
+    }
+  });
+
+  return anchors.slice(0, 10);
+}
+
+function anchorHintToCode(
+  hint: z.infer<typeof generatedHintSchema>,
+  index: number,
+  anchors: CodeAnchor[],
+  focusSkill: SkillId,
+  difficulty: ChallengeDifficulty,
+): z.infer<typeof generatedHintSchema> {
+  const anchor = anchors[index % Math.max(anchors.length, 1)];
+  let body = sanitizeHintBody(hint.body.trim(), focusSkill, difficulty);
+
+  if (anchor && !/\bline\s*\d+\b/i.test(body)) {
+    body = `Line ${anchor.line} (${anchor.identifier}) is the code area to inspect: ${anchor.source}. ${body}`;
+  }
+
+  if (body.split(/\s+/).filter(Boolean).length < 16) {
+    body = `${body} Preserve the same return value while improving ${labelForSkill(focusSkill).toLowerCase()} in this area.`;
+  }
+
+  return {
+    body: limitText(body, 420),
+    title: limitText(
+      hint.title === 'Code-specific hint' && anchor ? `${anchor.identifier} path` : hint.title,
+      80,
+    ),
+  };
+}
+
+function anchorMetadataToCode(
+  metadata: z.infer<typeof generatedMetadataSchema>,
+  entryPoint: string,
+  messyCode: string,
+  focusSkill: SkillId,
+  difficulty: ChallengeDifficulty,
+): z.infer<typeof generatedMetadataSchema> {
+  const anchors = extractCodeAnchors(messyCode, entryPoint);
+  const identifiers = extractCodeIdentifiers(messyCode, entryPoint);
+  const focusLabel = labelForSkill(focusSkill).toLowerCase();
+  let description = metadata.description.trim();
+  const descriptionWords = description.split(/\s+/).filter(Boolean).length;
+  const anchorSummary = anchors
+    .slice(0, 3)
+    .map((anchor) => `line ${anchor.line} around ${anchor.identifier}`)
+    .join(', ');
+
+  if (
+    descriptionWords < 45 ||
+    !includesWholeIdentifier(description, entryPoint) ||
+    !identifiers.some((identifier) => identifier !== entryPoint && includesWholeIdentifier(description, identifier))
+  ) {
+    description = `${description} In ${entryPoint}, pay attention to ${anchorSummary || 'the main return path'} because those paths drive the result the function returns. Keep the same output for the same inputs while making the ${focusLabel} issue easier to understand and maintain.`;
+  }
+
+  return {
+    ...metadata,
+    description: limitText(description, 1200),
+    hints: metadata.hints.map((hint, index) =>
+      anchorHintToCode(hint, index, anchors, focusSkill, difficulty),
+    ),
+  };
+}
+
 function toJsonValue(value: unknown): JsonValue {
   if (value === undefined) {
     return null;
@@ -622,8 +976,10 @@ ${difficultyGuidance}
 
 Rules:
 - Return JavaScript code only.
+- Start with the word "function" and end with the final closing brace for that function.
 - Use one public camelCase function declaration with a domain-specific name.
 - The function must accept JSON-friendly input and return a JSON-friendly value.
+- Include an explicit return statement for the successful path.
 - Make the code intentionally improvable in ${options.focusSkill}, but keep it runnable.
 - Create a specific real-world task, not a generic processData style example.
 - Include at least one branch or loop and at least two local variables unless the beginner guardrail would make that unnatural.
@@ -671,6 +1027,7 @@ function stagedMetadataPrompt(
   const focusLabel = labelForSkill(options.focusSkill);
   const codeWithLines = numberedCode(messyCode).slice(0, 4500);
   const referenceWithLines = numberedCode(referenceCode).slice(0, 4500);
+  const identifiers = extractCodeIdentifiers(messyCode, entryPoint).slice(0, 18).join(', ');
 
   return `Return JSON only for learner-facing metadata for this generated JavaScript refactor challenge.
 Required keys:
@@ -680,14 +1037,18 @@ Rules:
 - Skill focus: ${options.focusSkill} (${focusLabel}).
 - Difficulty: ${difficulty}.
 - entryPoint: ${entryPoint}.
+- Code identifiers available for specific hints: ${identifiers}.
 - Avoid these recent titles: ${options.recentTitles.join(', ') || 'none'}.
 - title must describe the specific product problem in the code, not internal tooling.
-- description must be detailed and specific: 4 to 6 short sentences explaining what ${entryPoint} currently does, the domain situation, what behavior must stay the same, and the main refactor goal.
+- description must be detailed and specific: at least 45 words across 4 to 6 short sentences explaining what ${entryPoint} currently does, the domain situation, what behavior must stay the same, and the main refactor goal.
 - description must mention ${entryPoint} and at least two real identifiers, branches, loops, or return values from the messy code.
 - tags must be specific learner-facing code/problem strings only, such as "cart-total", "nested-branch", or "data-normalization".
 - requirements must be 2 to 3 simple user-facing items. First item must say the result must stay the same. Other items should ask for improved clarity, structure, performance, or safety based on ${focusLabel}.
 - hints must be 3 to 5 progressive hints generated from the messy code.
 - Each hint body must point to concrete code: use a line number from the numbered messy code, an exact identifier, a specific condition, loop, repeated expression, return value, or branch.
+- Each hint body must include "Line N" or one exact identifier from this list: ${identifiers}.
+- Do not suggest recursion, async, map/reduce, helper extraction, or other techniques unless that technique fits the target difficulty and the current code.
+- Do not ask the learner to add new outputs, new fallbacks, new null returns, new thrown errors, or different error handling. Behavior must stay the same.
 - Beginner hints should be direct and step-by-step. Intermediate and higher hints can be more strategic, but must still name concrete code locations.
 - Do not describe formatting, indentation, spacing, or semicolons as the main improvement area.
 - hints must be an array of objects with title and body.
@@ -710,6 +1071,7 @@ function stagedMetadataRescuePrompt(
 ): string {
   const difficulty = difficultyForProfile(options.profile, options.focusSkill);
   const focusLabel = labelForSkill(options.focusSkill);
+  const identifiers = extractCodeIdentifiers(messyCode, entryPoint).slice(0, 18).join(', ');
 
   return `Return one valid JSON object only.
 Create specific learner-facing metadata for this JavaScript refactor exercise.
@@ -719,13 +1081,50 @@ Constraints:
 - Difficulty: ${difficulty}.
 - Main skill: ${focusLabel}.
 - Public function: ${entryPoint}.
-- Description: 4 to 6 short sentences, specific to the code, naming ${entryPoint} and at least two identifiers or code paths.
+- Code identifiers available for specific hints: ${identifiers}.
+- Description: at least 45 words across 4 to 6 short sentences, specific to the code, naming ${entryPoint} and at least two identifiers or code paths.
 - Requirements: 2 or 3 short strings. First requirement must preserve the same result.
-- Hints: exactly 3 objects with title and body. Each body must cite a line number or exact identifier from the numbered code and say what to inspect or change.
+- Hints: exactly 3 objects with title and body. Each body must include "Line N" or one exact identifier from this list: ${identifiers}. Say what to inspect or change.
+- Hints must preserve behavior. Do not suggest new fallback values, new null returns, new thrown errors, or changed error handling.
 - Tags: concrete problem/domain tags only.
 - No formatting, spacing, semicolon, architecture, provider, or internal-tooling mentions.
 
 Numbered code:
+${numberedCode(messyCode).slice(0, 4500)}`;
+}
+
+function stagedMetadataRepairPrompt(
+  options: GenerateChallengeOptions,
+  entryPoint: string,
+  messyCode: string,
+  previousMetadata: z.infer<typeof generatedMetadataSchema>,
+  issues: string[],
+): string {
+  const difficulty = difficultyForProfile(options.profile, options.focusSkill);
+  const focusLabel = labelForSkill(options.focusSkill);
+  const identifiers = extractCodeIdentifiers(messyCode, entryPoint).slice(0, 18).join(', ');
+
+  return `Return one valid JSON object only. Rewrite the learner-facing metadata so it is specific to the code.
+Keep the same required keys: title, applicationContext, description, estimateMinutes, tags, requirements, hints, insertedProblems, expectedTerms, preferredTerms, antiPatterns.
+
+Why the previous metadata was rejected:
+${issues.map((issue) => `- ${issue}`).join('\n')}
+
+Rules for the rewrite:
+- Difficulty: ${difficulty}.
+- Main skill: ${focusLabel}.
+- Public function: ${entryPoint}.
+- Description must be at least 45 words, 4 to 6 short sentences, and must mention ${entryPoint} plus at least two identifiers or line-level code paths.
+- Every hint body must include "Line N" or one exact identifier from this list: ${identifiers}.
+- Hints must say what code area to inspect or change, not general refactoring advice.
+- Beginner wording must stay approachable and avoid advanced techniques unless the code already uses them.
+- Hints must preserve behavior. Do not suggest new fallback values, new null returns, new thrown errors, or changed error handling.
+- Do not mention formatting, spacing, semicolons, internal tooling, architecture, providers, or prompts.
+
+Previous metadata:
+${JSON.stringify(previousMetadata).slice(0, 3500)}
+
+Numbered messy code:
 ${numberedCode(messyCode).slice(0, 4500)}`;
 }
 
@@ -957,7 +1356,12 @@ export class LlmService {
   private async generateStagedChallenge(
     options: GenerateChallengeOptions,
   ): Promise<z.infer<typeof generatedChallengeSchema>> {
-    const messyCode = await this.requestJavaScript(stagedCodePrompt(options), 3);
+    const targetDifficulty = difficultyForProfile(options.profile, options.focusSkill);
+    const messyCode = await this.requestJavaScript(
+      stagedCodePrompt(options),
+      7,
+      (code) => practiceSurfaceIssues(code, targetDifficulty),
+    );
     const messyEntryPoint = extractDefinedEntryPoints(messyCode).find(
       (name) => !PLACEHOLDER_FUNCTION_NAMES.has(name),
     );
@@ -968,7 +1372,7 @@ export class LlmService {
 
     const referenceCode = await this.requestJavaScript(
       stagedReferencePrompt(messyEntryPoint, options.focusSkill, messyCode),
-      3,
+      4,
     );
     const entryPoint = resolveEntryPoint(messyEntryPoint, messyCode, referenceCode);
 
@@ -1006,7 +1410,27 @@ export class LlmService {
       );
     }
 
-    const targetDifficulty = difficultyForProfile(options.profile, options.focusSkill);
+    metadata = anchorMetadataToCode(metadata, entryPoint, messyCode, options.focusSkill, targetDifficulty);
+    const metadataIssues = metadataSpecificityIssues(metadata, entryPoint, messyCode);
+
+    if (metadataIssues.length) {
+      console.warn(`AI metadata was too generic; requesting a code-specific rewrite: ${metadataIssues.join('; ')}`);
+      metadata = await this.requestJson(
+        stagedMetadataRepairPrompt(options, entryPoint, messyCode, metadata, metadataIssues),
+        generatedMetadataSchema,
+        this.config.timeoutMs,
+        jsonSystemPrompt,
+        2,
+      );
+      metadata = anchorMetadataToCode(metadata, entryPoint, messyCode, options.focusSkill, targetDifficulty);
+    }
+
+    const remainingMetadataIssues = metadataSpecificityIssues(metadata, entryPoint, messyCode);
+
+    if (remainingMetadataIssues.length) {
+      throw new Error(`The model returned metadata that was still too generic: ${remainingMetadataIssues.join('; ')}`);
+    }
+
     const rawChallenge = {
       ...metadata,
       difficulty: targetDifficulty,
@@ -1078,7 +1502,11 @@ export class LlmService {
     return await this.requestJson(analysisPrompt(source), analysisSchema, 20_000);
   }
 
-  private async requestJavaScript(prompt: string, maxAttempts = 2): Promise<string> {
+  private async requestJavaScript(
+    prompt: string,
+    maxAttempts = 2,
+    validateCode: (code: string) => string[] = () => [],
+  ): Promise<string> {
     let repairNote = '';
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -1101,12 +1529,14 @@ export class LlmService {
       const entryPoints = extractDefinedEntryPoints(code);
       const hasStub = INCOMPLETE_CODE_PATTERN.test(code);
       const hasValidSyntax = hasValidJavaScriptSyntax(code);
+      const validationIssues =
+        code.length >= 80 && entryPoints.length && !hasStub && hasValidSyntax ? validateCode(code) : [];
 
-      if (code.length >= 80 && entryPoints.length && !hasStub && hasValidSyntax) {
+      if (code.length >= 80 && entryPoints.length && !hasStub && hasValidSyntax && !validationIssues.length) {
         return code;
       }
 
-      repairNote = `\nYour last response was incomplete or not valid runnable JavaScript. Return exactly one complete JavaScript function declaration, at least 80 characters, with no placeholders and no prose.`;
+      repairNote = `\nYour last response was incomplete, invalid, or too small for the practice goal. Return exactly one complete JavaScript function declaration that starts with "function", has balanced braces, includes a return statement, is at least 80 characters, and has no placeholders or prose.${validationIssues.length ? ` Fix these issues: ${validationIssues.join(' ')}` : ''}`;
     }
 
     throw new Error('The model did not generate complete JavaScript code.');

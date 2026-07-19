@@ -12,6 +12,8 @@
     "build:markdown-studio": "cross-env NF_TARGET=markdown ng build markdown-studio-remote",
     "build:neatcode": "cross-env NF_TARGET=neatcode ng build neatcode-remote",
     "build:all": "npm run build && npm run build:markdown-studio && npm run build:neatcode",
+    "build:render:ui": "npm run build:markdown-studio && npm run build:neatcode && npm run build && node tools/prepare-render-ui.mjs bundled",
+    "build:render:shell": "npm run build && node tools/prepare-render-ui.mjs external",
     "watch": "cross-env NF_TARGET=shell ng build decoders-markdown --watch --configuration development",
     "test": "ng test decoders-markdown"
   },

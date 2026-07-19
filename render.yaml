@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: decoders-workspace-ui
+    runtime: static
+    buildCommand: npm ci && npm run build:render:ui
+    staticPublishPath: ./dist/decoders-markdown/browser
+    headers:
+      - path: /federation.manifest.json
+        name: Cache-Control
+        value: no-cache
+      - path: /remotes/*/remoteEntry.json
+        name: Cache-Control
+        value: no-cache
+      - path: /*
+        name: X-Frame-Options
+        value: sameorigin
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
