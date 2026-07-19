@@ -1722,7 +1722,7 @@ Return a corrected complete challenge. Keep it smaller and simpler, but preserve
             { content: `${prompt}${repairNote}`, role: 'user' },
           ],
           model: this.config.model,
-          temperature: this.config.model.includes('gemma') ? 0.2 : 1,
+          temperature: this.config.model.includes('gemma') ? 0.2 : 0.4,
           top_p: 0.9,
         },
         { timeout: this.config.timeoutMs },
