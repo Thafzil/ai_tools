@@ -25,10 +25,10 @@ async function startServer(): Promise<void> {
     sessionSecret: config.sessionSecret,
   });
 
-  app.listen(config.port, '127.0.0.1', () => {
+  app.listen(config.port, config.host, () => {
     const health = repository.getHealth();
     console.log(
-      `NEATCODE API listening on http://127.0.0.1:${config.port} (${health.mode}: ${health.detail})`,
+      `NEATCODE API listening on http://${config.host}:${config.port} (${health.mode}: ${health.detail})`,
     );
   });
 }

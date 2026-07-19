@@ -14,12 +14,14 @@ const DEFAULT_CORS_ORIGINS = [
 
 const DEFAULT_LLM_MODEL = 'llama3.2:latest';
 const DEFAULT_LLM_BASE_URL = 'http://localhost:11434/v1';
+const DEFAULT_HOST = '0.0.0.0';
 const DEFAULT_PORT = 5050;
 const DEFAULT_SESSION_SECRET = 'local-neatcode-session-secret-change-me-before-deployment';
 
 export interface ServerConfig {
   allowMemoryFallback: boolean;
   corsOrigins: string[];
+  host: string;
   llmApiKey: string;
   llmBaseUrl: string;
   llmModel: string;
@@ -77,6 +79,7 @@ export function getServerConfig(): ServerConfig {
   return {
     allowMemoryFallback: parseBoolean(process.env['ALLOW_MEMORY_FALLBACK'], true),
     corsOrigins: parseOrigins(process.env['CORS_ORIGIN']),
+    host: process.env['HOST'] || DEFAULT_HOST,
     llmApiKey: process.env['LLM_API_KEY'] || process.env['OPENAI_API_KEY'] || 'ollama',
     llmBaseUrl: process.env['LLM_BASE_URL'] || DEFAULT_LLM_BASE_URL,
     llmModel: process.env['LLM_MODEL'] || process.env['MODEL'] || DEFAULT_LLM_MODEL,
