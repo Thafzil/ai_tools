@@ -50,7 +50,7 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://ai-tools-api.onrender.com/api/*
+        destination: https://ai-tools-api-6jkb.onrender.com/api/*
       - type: rewrite
         source: /*
         destination: /index.html

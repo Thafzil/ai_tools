@@ -358,6 +358,14 @@ export function createApp(options: CreateAppOptions): express.Express {
   app.use(cors(createCorsOptions(options.corsOrigins)));
   app.use(express.json({ limit: '1mb' }));
 
+  app.get('/', (_request, response) => {
+    response.json({
+      health: '/api/neatcode/health',
+      ok: true,
+      service: 'neatcode-api',
+    });
+  });
+
   app.get('/api/neatcode/health', (_request, response) => {
     response.json({
       llm: {
