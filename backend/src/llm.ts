@@ -1128,6 +1128,42 @@ Numbered messy code:
 ${numberedCode(messyCode).slice(0, 4500)}`;
 }
 
+function compactChallengePrompt(options: GenerateChallengeOptions, repairNote = ''): string {
+  const difficulty = difficultyForProfile(options.profile, options.focusSkill);
+  const focusLabel = labelForSkill(options.focusSkill);
+  const difficultyGuidance = difficultyGuidanceFor(difficulty);
+
+  return `Return one valid JSON object only for a complete NEATCODE JavaScript refactor challenge.
+Required JSON keys:
+title, applicationContext, description, difficulty, entryPoint, estimateMinutes, tags, requirements, hints, insertedProblems, expectedTerms, preferredTerms, antiPatterns, messyCode, referenceCode, testCases.
+
+Learner:
+- Signup level: ${options.profile.startingLevel}
+- Target difficulty: ${difficulty}
+- Primary skill to practice: ${options.focusSkill} (${focusLabel})
+- Avoid recent titles: ${options.recentTitles.join(', ') || 'none'}
+
+Difficulty guardrails:
+${difficultyGuidance}
+
+Challenge rules:
+- messyCode and referenceCode must both define the same public function named by entryPoint.
+- Use a domain-specific camelCase function name. Do not use functionName, solution, processData, clean, refactor, transformObject, transformJson, or parseJson.
+- messyCode must be runnable JavaScript, start with "function", include a visible branch or loop, include at least one local variable, and return a JSON-friendly value.
+- referenceCode must preserve the same input, output, thrown errors, and side effects while improving ${focusLabel}.
+- For beginner difficulty, do not use recursion, async, promises, try/catch, classes, DOM APIs, timers, Date, Math.random, imports, exports, require, process, window, or document.
+- Do not make formatting, spacing, indentation, or semicolons the main problem.
+- testCases must contain 3 to 5 objects shaped like {"name":"scenario","args":[/* JSON-friendly function arguments */]}.
+- The first test case must be a normal successful case.
+- description must be at least 45 words and mention entryPoint plus real identifiers or code paths from messyCode.
+- hints must be 3 to 5 objects with title and body. Each hint body must mention "Line N" or an exact identifier from messyCode and must preserve behavior.
+- requirements must be simple: same result first, then improve the focus area.
+- tags must be problem/domain tags only, not internal architecture.
+- Do not mention AI, API, backend, database, prompts, providers, or infrastructure.
+
+${repairNote}`;
+}
+
 function secondarySkillsFor(focusSkill: SkillId): SkillId[] {
   const defaults: Record<SkillId, SkillId[]> = {
     architecture: ['modularity', 'restraint', 'testing'],
@@ -1231,6 +1267,69 @@ function challengeFromModel(
     type: typeFor(focusSkill),
     visibleProblems: [],
   };
+}
+
+function finalizeGeneratedChallenge(
+  raw: z.infer<typeof generatedChallengeShape>,
+  options: GenerateChallengeOptions,
+): z.infer<typeof generatedChallengeSchema> {
+  const targetDifficulty = difficultyForProfile(options.profile, options.focusSkill);
+  const startingCode = cleanCodeFence(raw.messyCode);
+  const referenceCode = cleanCodeFence(raw.referenceCode);
+  const entryPoint = resolveEntryPoint(raw.entryPoint, startingCode, referenceCode) || raw.entryPoint.trim();
+
+  if (!entryPoint) {
+    throw new Error('Generated challenge did not define the same public function in both code versions.');
+  }
+
+  if (!hasValidJavaScriptSyntax(startingCode) || !hasValidJavaScriptSyntax(referenceCode)) {
+    throw new Error('Generated challenge code is not valid JavaScript.');
+  }
+
+  const surfaceIssues = practiceSurfaceIssues(startingCode, targetDifficulty);
+
+  if (surfaceIssues.length) {
+    throw new Error(`Generated challenge is not suitable for ${targetDifficulty}: ${surfaceIssues.join(' ')}`);
+  }
+
+  const metadata = generatedMetadataSchema.parse({
+    antiPatterns: raw.antiPatterns,
+    applicationContext: raw.applicationContext,
+    description: raw.description,
+    estimateMinutes: raw.estimateMinutes,
+    expectedTerms: raw.expectedTerms,
+    hints: raw.hints,
+    insertedProblems: raw.insertedProblems,
+    preferredTerms: raw.preferredTerms,
+    requirements: raw.requirements,
+    tags: raw.tags,
+    title: raw.title,
+  });
+  const anchoredMetadata = anchorMetadataToCode(
+    metadata,
+    entryPoint,
+    startingCode,
+    options.focusSkill,
+    targetDifficulty,
+  );
+  const metadataIssues = metadataSpecificityIssues(anchoredMetadata, entryPoint, startingCode);
+
+  if (metadataIssues.length) {
+    throw new Error(`Generated challenge metadata is too generic: ${metadataIssues.join('; ')}`);
+  }
+
+  const parameterCount = extractParameterCount(startingCode, entryPoint);
+
+  return generatedChallengeSchema.parse({
+    ...raw,
+    ...anchoredMetadata,
+    difficulty: targetDifficulty,
+    entryPoint,
+    messyCode: startingCode,
+    referenceCode,
+    testCases: normalizeGeneratedRuntimeCases(raw.testCases, parameterCount),
+    visibleProblems: [],
+  });
 }
 
 function coachPrompt(options: CoachFeedbackOptions): string {
@@ -1349,8 +1448,39 @@ export class LlmService {
   }
 
   async generateChallenge(options: GenerateChallengeOptions): Promise<Challenge> {
-    const parsed = await this.generateStagedChallenge(options);
+    const parsed =
+      this.config.provider === 'openai'
+        ? await this.generateOpenAiChallenge(options)
+        : await this.generateStagedChallenge(options);
     return challengeFromModel(parsed, options, this.config.provider, this.config.model);
+  }
+
+  private async generateOpenAiChallenge(
+    options: GenerateChallengeOptions,
+  ): Promise<z.infer<typeof generatedChallengeSchema>> {
+    let repairNote = '';
+    let lastError = 'OpenAI did not return a usable challenge.';
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const raw = await this.requestJson(
+          compactChallengePrompt(options, repairNote),
+          generatedChallengeSchema,
+          Math.min(this.config.timeoutMs, 45_000),
+          jsonSystemPrompt,
+          1,
+        );
+
+        return finalizeGeneratedChallenge(raw, options);
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error.message : String(error);
+        repairNote = `Previous challenge was rejected: ${lastError}
+Return a corrected complete challenge. Keep it smaller and simpler, but preserve the same required JSON keys.`;
+      }
+    }
+
+    console.warn(`Compact OpenAI challenge generation failed; using staged fallback: ${lastError}`);
+    return await this.generateStagedChallenge(options);
   }
 
   private async generateStagedChallenge(
@@ -1441,7 +1571,7 @@ export class LlmService {
       visibleProblems: [],
     };
 
-    return generatedChallengeSchema.parse(rawChallenge);
+    return finalizeGeneratedChallenge(rawChallenge, options);
   }
 
   async coachSubmission(options: CoachFeedbackOptions): Promise<EvaluationFeedback> {
